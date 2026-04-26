@@ -95,4 +95,67 @@ app.get('/api/reports/stats', async (req, res) => {
   }
 });
 
+// ==========================================
+// 1. Endpoint Authors (Search by name)
+// ==========================================
+app.get('/api/authors', async (req, res) => {
+  try {
+    const { name } = req.query; // Mengambil query param ?name=
+    let query = 'SELECT * FROM authors';
+    let params = [];
+
+    if (name) {
+      query += ' WHERE name ILIKE $1';
+      params.push(`%${name}%`); // Mencari nama yang mengandung kata tersebut
+    }
+
+    const { rows } = await pool.query(query, params);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// 2. Endpoint Categories (Search by name)
+// ==========================================
+app.get('/api/categories', async (req, res) => {
+  try {
+    const { name } = req.query; // Mengambil query param ?name=
+    let query = 'SELECT * FROM categories';
+    let params = [];
+
+    if (name) {
+      query += ' WHERE name ILIKE $1';
+      params.push(`%${name}%`);
+    }
+
+    const { rows } = await pool.query(query, params);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// 3. Endpoint Books (Search by title)
+// ==========================================
+app.get('/api/books', async (req, res) => {
+  try {
+    const { title } = req.query; // Mengambil query param ?title=
+    let query = 'SELECT * FROM books';
+    let params = [];
+
+    if (title) {
+      query += ' WHERE title ILIKE $1';
+      params.push(`%${title}%`);
+    }
+
+    const { rows } = await pool.query(query, params);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = app;
