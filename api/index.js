@@ -5,63 +5,96 @@ require('dotenv').config();
 const app = express();
 app.use(express.json());
 
+// Konfigurasi Database Neon
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { require: true },
 });
 
+// 1. Rute Utama untuk cek status API
+app.get('/', (req, res) => {
+  res.send('API Perpustakaan Kelompok 57 - Modul 4 Berhasil Berjalan!');
+});
+
 // ==========================================
-// 1. CRUD & SEARCH (Authors, Categories, Books)
+// 2. FITUR PENCARIAN & CRUD (Authors, Categories, Books)
 // ==========================================
 
-// GET Books (with Search by Title)
+// --- AUTHORS ---
+app.get('/api/authors', async (req, res) => {
+  const { name } = req.query;
+  const query = name ? 'SELECT * FROM authors WHERE name ILIKE $1' : 'SELECT * FROM authors';
+  const params = name ? [`%${name}%`] : [];
+  const { rows } = await pool.query(query, params);
+  res.json({ success: true, data: rows });
+});
+
+app.post('/api/authors', async (req, res) => {
+  const { name } = req.body;
+  const { rows } = await pool.query('INSERT INTO authors (name) VALUES ($1) RETURNING *', [name]);
+  res.status(201).json({ success: true, data: rows[0] });
+});
+
+app.delete('/api/authors/:id', async (req, res) => {
+  await pool.query('DELETE FROM authors WHERE id = $1', [req.params.id]);
+  res.json({ success: true, message: "Author berhasil dihapus" });
+});
+
+// --- CATEGORIES ---
+app.get('/api/categories', async (req, res) => {
+  const { name } = req.query;
+  const query = name ? 'SELECT * FROM categories WHERE name ILIKE $1' : 'SELECT * FROM categories';
+  const params = name ? [`%${name}%`] : [];
+  const { rows } = await pool.query(query, params);
+  res.json({ success: true, data: rows });
+});
+
+app.post('/api/categories', async (req, res) => {
+  const { name } = req.body;
+  const { rows } = await pool.query('INSERT INTO categories (name) VALUES ($1) RETURNING *', [name]);
+  res.status(201).json({ success: true, data: rows[0] });
+});
+
+// --- BOOKS ---
 app.get('/api/books', async (req, res) => {
   const { title } = req.query;
-  let query = 'SELECT * FROM books';
-  let params = [];
-  if (title) {
-    query += ' WHERE title ILIKE $1';
-    params.push(`%${title}%`);
-  }
+  const query = title ? 'SELECT * FROM books WHERE title ILIKE $1' : 'SELECT * FROM books';
+  const params = title ? [`%${title}%`] : [];
   const { rows } = await pool.query(query, params);
-  res.json(rows);
-});
-
-// Contoh CRUD: Delete Book
-app.delete('/api/books/:id', async (req, res) => {
-  await pool.query('DELETE FROM books WHERE id = $1', [req.params.id]);
-  res.json({ message: "Buku berhasil dihapus" });
+  res.json({ success: true, data: rows });
 });
 
 // ==========================================
-// 2. ENDPOINT PENGEMBALIAN BUKU (Return Logic)
+// 3. ENDPOINT PENGEMBALIAN BUKU (Return Logic)
 // ==========================================
 app.post('/api/loans/return/:id', async (req, res) => {
   const client = await pool.connect();
   try {
-    await client.query('BEGIN'); // Mulai Transaksi
-    
-    // 1. Update status peminjaman
+    await client.query('BEGIN'); // Memulai transaksi database
+
+    // 1. Cek dan update status pinjaman
     const loanRes = await client.query(
       `UPDATE loans SET status = 'RETURNED', return_date = CURRENT_DATE 
        WHERE id = $1 AND status = 'BORROWED' RETURNING book_id`,
       [req.params.id]
     );
 
-    if (loanRes.rows.length === 0) throw new Error("Transaksi tidak ditemukan atau sudah dikembalikan");
+    if (loanRes.rows.length === 0) {
+      throw new Error("Transaksi tidak ditemukan atau buku sudah dikembalikan sebelumnya.");
+    }
 
     const bookId = loanRes.rows[0].book_id;
 
-    // 2. Tambah stok buku (available_copies)
+    // 2. Tambah kembali stok buku otomatis
     await client.query(
       'UPDATE books SET available_copies = available_copies + 1 WHERE id = $1',
       [bookId]
     );
 
-    await client.query('COMMIT');
-    res.json({ success: true, message: "Buku berhasil dikembalikan dan stok diperbarui" });
+    await client.query('COMMIT'); // Simpan perubahan jika semua sukses
+    res.json({ success: true, message: "Buku berhasil dikembalikan dan stok diperbarui secara otomatis." });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK'); // Batalkan semua jika ada satu saja yang gagal
     res.status(400).json({ success: false, error: err.message });
   } finally {
     client.release();
@@ -69,7 +102,7 @@ app.post('/api/loans/return/:id', async (req, res) => {
 });
 
 // ==========================================
-// 3. ENDPOINT LAPORAN (Statistics)
+// 4. ENDPOINT LAPORAN: STATISTIK PERPUSTAKAAN
 // ==========================================
 app.get('/api/reports/stats', async (req, res) => {
   try {
@@ -91,8 +124,9 @@ app.get('/api/reports/stats', async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
+// WAJIB: Baris ini harus selalu di paling bawah
 module.exports = app;
